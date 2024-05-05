@@ -52,7 +52,7 @@ Let's say we wanted to add a profile picture to the person struct in such a way 
 type Person struct {
     Name            string
     Age             int
-    ProfilePicture *jbtf.Png // Make sure it's always a pointer
+    ProfilePicture  *jbtf.Png // Make sure it's always a pointer
 }
 ```
 
@@ -61,22 +61,22 @@ After serializing, we'll notice a few new fields have been added to our JSON doc
 ```jsonc
 {
     "buffers": [
-		{
+        {
             // Total size of this buffer
-			"byteLength": 1000,
+            "byteLength": 1000,
 
             // URI of the buffer. Can either encode directly as a string or
             // reference a seperate binary file containing buffer data
-			"uri": "[embedded binary data]"
-		}
-	],
+            "uri": "[embedded binary data]"
+        }
+    ],
     // Array of views into buffers defined within this file.
-	"bufferViews": [
-		{
-			"buffer": 0,       // Index of the buffer we're refering to.
-			"byteLength": 1000 // Size in bytes of our view
-		}
-	],
+    "bufferViews": [
+        {
+            "buffer": 0,       // Index of the buffer we're refering to.
+            "byteLength": 1000 // Size in bytes of our view
+        }
+    ],
     // Data is always present, and takes on the values being serialized
     "data": {
         "Name": "Bob",
@@ -98,21 +98,21 @@ The marshaller and unmarshaller look for types that implement the `jbtf.Serializ
 
 ```golang
 type Grade struct {
-	value float32
+    value float32
 }
 
 func (g *Grade) Deserialize(in io.Reader) (err error) {
-	data := make([]byte, 4)
-	_, err = io.ReadFull(in, data)
-	g.value = math.Float32frombits(binary.LittleEndian.Uint32(data))
-	return
+    data := make([]byte, 4)
+    _, err = io.ReadFull(in, data)
+    g.value = math.Float32frombits(binary.LittleEndian.Uint32(data))
+    return
 }
 
 func (pss Grade) Serialize(out io.Writer) error {
-	bytes := make([]byte, 4)
-	binary.LittleEndian.PutUint32(bytes, math.Float32bits(g.value))
-	_, err := out.Write(bytes)
-	return err
+    bytes := make([]byte, 4)
+    binary.LittleEndian.PutUint32(bytes, math.Float32bits(g.value))
+    _, err := out.Write(bytes)
+    return err
 }
 ```
 
@@ -122,8 +122,8 @@ Then using the custom serializer is as simple as:
 type Person struct {
     Name            string
     Age             int
-    ProfilePicture *jbtf.Png
-    Grade          *Grade    // Make sure it's always a pointer
+    ProfilePicture  *jbtf.Png
+    Grade           *Grade    // Make sure it's always a pointer
 }
 ```
 
@@ -132,26 +132,26 @@ Now when serialized, we see a new buffer view appear.
 ```jsonc
 {
     "buffers": [
-		{
-			"byteLength": 1004,
-			"uri": "[embedded binary data]"
-		}
-	],
-	"bufferViews": [
+        {
+            "byteLength": 1004,
+            "uri": "[embedded binary data]"
+        }
+    ],
+    "bufferViews": [
         // Our custom grade data
-		{
-			"buffer": 0,    
-			"byteLength": 4
-		},
+        {
+            "buffer": 0,    
+            "byteLength": 4
+        },
         // Profile picture
         {
-			"buffer": 0,
+            "buffer": 0,
             // A byte offset is required if we're not starting from the 
             // begining of the buffer
-			"byteOffset": 4,
-			"byteLength": 1000
-		}
-	],
+            "byteOffset": 4,
+            "byteLength": 1000
+        }
+    ],
     "data": {
         "Age":  30,
         "$Grade": 0,
