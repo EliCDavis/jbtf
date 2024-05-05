@@ -1,4 +1,5 @@
 # JSON Binary Transmission Format
+![Coverage](https://img.shields.io/badge/Coverage-80.4%25-brightgreen)
 
 GLTF inspired JSON schema for embedding arbitrary binaries.
 
