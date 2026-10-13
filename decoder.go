@@ -23,9 +23,14 @@ func NewDecoder(graphJSON []byte) (Decoder, error) {
 		return Decoder{}, err
 	}
 
+	buffers, err := rebuildBuffers(s.Buffers)
+	if err != nil {
+		return Decoder{}, err
+	}
+
 	return Decoder{
 		bufferViews: s.BufferViews,
-		buffers:     rebuildBuffers(s.Buffers),
+		buffers:     buffers,
 	}, nil
 }
 

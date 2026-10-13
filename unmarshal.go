@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"reflect"
 	"strings"
 )
@@ -50,24 +51,36 @@ func IsNilish(val any) bool {
 }
 
 func BuildBuffer(buf Buffer) *bytes.Reader {
+	r, err := buildBuffer(buf)
+	if err != nil {
+		panic(err)
+	}
+	return r
+}
+
+func buildBuffer(buf Buffer) (*bytes.Reader, error) {
 	const dataUriIdentifier = "data:application/octet-stream;base64,"
-	if strings.Index(buf.URI, dataUriIdentifier) == 0 {
+	if strings.HasPrefix(buf.URI, dataUriIdentifier) {
 		dataString := buf.URI[len(dataUriIdentifier):]
 		data, err := base64.StdEncoding.DecodeString(dataString)
 		if err != nil {
-			panic(err)
+			return nil, fmt.Errorf("decoding buffer data uri: %w", err)
 		}
-		return bytes.NewReader(data)
+		return bytes.NewReader(data), nil
 	}
-	panic(fmt.Errorf("don't know how to interpret buffer: %+v", buf))
+	return nil, fmt.Errorf("don't know how to interpret buffer: %+v", buf)
 }
 
-func rebuildBuffers(bufs []Buffer) []*bytes.Reader {
+func rebuildBuffers(bufs []Buffer) ([]*bytes.Reader, error) {
 	vals := make([]*bytes.Reader, len(bufs))
 	for i, v := range bufs {
-		vals[i] = BuildBuffer(v)
+		r, err := buildBuffer(v)
+		if err != nil {
+			return nil, fmt.Errorf("buffer %d: %w", i, err)
+		}
+		vals[i] = r
 	}
-	return vals
+	return vals, nil
 }
 
 func interpretBufferView(value reflect.Value, rawData map[string]any, bufferViews []BufferView, buffers []*bytes.Reader) error {
@@ -110,13 +123,19 @@ func interpretBufferView(value reflect.Value, rawData map[string]any, bufferView
 				continue
 			}
 
-			bufIndex, isSerializable := bufIndexRaw.(float64)
-			if !isSerializable {
-				panic(fmt.Errorf("buffer index '%s' was not a number", bufIndexKey))
+			bufIndex, isNumber := bufIndexRaw.(float64)
+			if !isNumber {
+				return fmt.Errorf("buffer index '%s' was not a number", bufIndexKey)
 			}
 
+			if bufIndex < 0 || bufIndex >= float64(len(bufferViews)) || bufIndex != math.Trunc(bufIndex) {
+				return fmt.Errorf("buffer index '%s' is invalid: %v", bufIndexKey, bufIndex)
+			}
 			bufView := bufferViews[int(bufIndex)]
 
+			if bufView.Buffer < 0 || bufView.Buffer >= len(buffers) {
+				return fmt.Errorf("buffer view %d references out of range buffer %d", int(bufIndex), bufView.Buffer)
+			}
 			buf := buffers[bufView.Buffer]
 			_, err := buf.Seek(int64(bufView.ByteOffset), io.SeekStart)
 			if err != nil {
@@ -132,7 +151,7 @@ func interpretBufferView(value reflect.Value, rawData map[string]any, bufferView
 			instantiatedType := refNew.Interface()
 			serializable, isSerializable := instantiatedType.(Serializable)
 			if !isSerializable {
-				panic("instantiated type is not serializable")
+				return fmt.Errorf("field '%s' type %s is not serializable", structField.Name, typeEle)
 			}
 
 			err = serializable.Deserialize(buf)
@@ -141,7 +160,7 @@ func interpretBufferView(value reflect.Value, rawData map[string]any, bufferView
 			}
 
 			if !viewFieldValue.CanSet() {
-				panic(fmt.Errorf("field '%s' was found but can not be set", structField.Name))
+				return fmt.Errorf("field '%s' was found but can not be set", structField.Name)
 			}
 
 			viewFieldValue.Set(reflect.ValueOf(serializable))
@@ -153,10 +172,13 @@ func interpretBufferView(value reflect.Value, rawData map[string]any, bufferView
 }
 
 func ParseJsonUsingBuffers[T any](buffers []Buffer, bufferViews []BufferView, data []byte) (T, error) {
-	allBuffers := rebuildBuffers(buffers)
-
 	var thingToParse T
-	err := json.Unmarshal(data, &thingToParse)
+	allBuffers, err := rebuildBuffers(buffers)
+	if err != nil {
+		return thingToParse, err
+	}
+
+	err = json.Unmarshal(data, &thingToParse)
 	if err != nil {
 		return thingToParse, err
 	}
@@ -188,7 +210,10 @@ func Unmarshal[T any](data []byte) (T, error) {
 		rawData = specificData
 	}
 
-	allBuffers := rebuildBuffers(format.Buffers)
+	allBuffers, err := rebuildBuffers(format.Buffers)
+	if err != nil {
+		return format.Data, err
+	}
 
 	return format.Data, interpretBufferView(reflect.ValueOf(&format.Data), specificData, format.BufferViews, allBuffers)
 }
